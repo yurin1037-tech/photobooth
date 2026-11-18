@@ -28,8 +28,8 @@ button{font-family:'Jua',sans-serif;border:0;cursor:pointer}
 .cam{position:relative;width:100%;height:100%;border-radius:24px;overflow:hidden;background:#2b2320;box-shadow:0 10px 30px rgba(120,70,40,.18)}
 .guide{position:absolute;inset:0;pointer-events:none;z-index:2}
 .guide .ln{position:absolute;left:6%;right:6%;border-top:4px dashed rgba(255,255,255,.9);filter:drop-shadow(0 1px 3px rgba(0,0,0,.6))}
-.guide .ln span{position:absolute;right:0;top:-40px;color:#fff;font-family:'Jua';font-size:26px;text-shadow:0 2px 6px rgba(0,0,0,.7)}
-.guide .ln.feet span{top:6px}
+.guide .ln span{position:absolute;right:0;top:8px;color:#fff;font-family:'Jua';font-size:26px;text-shadow:0 2px 6px rgba(0,0,0,.7)}
+.guide .ln.feet span{top:-42px}
 .thumbs div{background-size:contain!important;background-repeat:no-repeat;background-color:#2b2320!important}
 .cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
 .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff}
@@ -63,6 +63,10 @@ button{font-family:'Jua',sans-serif;border:0;cursor:pointer}
 
 /* 시작 화면 */
 #startOv{background:linear-gradient(180deg,rgba(40,25,20,.15),rgba(40,25,20,.55))}
+#shotOv{order:-1;flex-basis:100%;display:flex;flex-direction:column;gap:10px}
+#shotOv .tip{color:var(--ink);font-family:'Jua';font-size:22px;text-align:center;line-height:1.35}
+#shotOv .bigbtn{width:100%;font-size:30px;padding:22px 12px;white-space:nowrap}
+@media (orientation:portrait){.side{flex-wrap:wrap}}
 #startOv .notice{margin-top:22px;background:rgba(255,255,255,.92);color:var(--ink);font-size:20px;line-height:1.6;padding:14px 22px;border-radius:16px;max-width:86%}
 
 /* 확인·결과 화면 */
@@ -105,7 +109,7 @@ button{font-family:'Jua',sans-serif;border:0;cursor:pointer}
       <video id="live" autoplay playsinline muted></video>
       <div class="flash" id="flash"></div>
       <div class="shot-label hidden" id="shotLabel">1 / 2</div>
-      <div class="guide hidden" id="guide"><div class="ln" style="top:7%"><span>머리는 이 선 아래</span></div><div class="ln feet" style="top:93%"><span>발은 이 선 위</span></div></div>
+      <div class="guide hidden" id="guide"><div class="ln" style="top:10%"><span>머리는 이 선 아래</span></div><div class="ln feet" style="top:93%"><span>발은 이 선 위</span></div></div>
       <div class="overlay hidden" id="countOv"><div class="count" id="countNum">5</div></div>
       <div class="overlay hidden" id="toastOv"><div class="toast" id="toastTxt">다음 포즈!</div></div>
       <div class="overlay" id="startOv">
@@ -116,6 +120,7 @@ button{font-family:'Jua',sans-serif;border:0;cursor:pointer}
     </div>
   </div>
   <div class="side">
+    <div class="hidden" id="shotOv"><button class="bigbtn" id="shotBtn">📸 촬영하기</button><div class="tip" id="shotTip"></div></div>
     <div class="brand">
       <span class="dong">2026 시니어모델</span>
       <h1 style="font-family:'Playfair Display',serif;font-weight:900;font-size:30px;white-space:nowrap">SILVER RUNWAY</h1>
@@ -175,7 +180,7 @@ button{font-family:'Jua',sans-serif;border:0;cursor:pointer}
    설정 — 아래 GAS_URL만 Apps Script 웹앱 주소로 바꿔주세요
    ========================================================= */
 const GAS_URL   = 'https://script.google.com/macros/s/AKfycbxYABakzhaEb-zdysO77ezaZUqZcpUgOoXA9Wic-dnmWhF-ZuCcqJM7sEmBSH_E1GNpRw/exec';
-const COUNTDOWN = 5;     // 컷마다 카운트다운(초)
+const COUNTDOWN = 3;     // [촬영하기]를 누른 뒤 찍히기까지(초)
 const VIDEO     = false; // true로 바꾸면 '움직이는 네컷' 영상도 함께 만듦
 const SHOTS     = 2;
 const IDLE_SEC  = 90;    // 결과 화면에서 자동으로 처음으로 돌아가는 시간
@@ -454,6 +459,7 @@ async function runSession() {
     $('shotLabel').textContent = (i + 1) + ' / ' + SHOTS + (i === 0 ? '  ·  상반신이 크게 나오게' : '  ·  머리부터 발끝까지 다 나오게'); $('shotLabel').classList.remove('hidden');
     const rec = startClip();
     $('guide').classList.toggle('hidden', i !== 1);
+    await waitShotButton(i);
     $('countOv').classList.remove('hidden');
     for (let c = COUNTDOWN; c > 0; c--) { $('countNum').textContent = c; await sleep(1000); }
     $('countOv').classList.add('hidden');
@@ -465,7 +471,7 @@ async function runSession() {
     $('flash').classList.remove('go'); void $('flash').offsetWidth; $('flash').classList.add('go');
     clips.push(await rec);
     const t = $('thumbs').children[i]; t.className = 'on'; t.style.backgroundImage = 'url(' + thumbOf(c) + ')';
-    if (i < SHOTS - 1) await toast('좋아요! 이번엔 두세 걸음 뒤로! 머리부터 발끝까지', 2600);
+    if (i < SHOTS - 1) await toast('좋아요! 이번엔 두세 걸음 뒤로!', 1600);
   }
   $('shotLabel').classList.add('hidden'); $('guide').classList.add('hidden');
   // 사진 합성
@@ -488,6 +494,14 @@ function thumbOf(c) { const t = document.createElement('canvas'); t.width = 240;
 function drawCoverMirror(ctx, src, w, h) {
   const r = Math.max(w / src.width, h / src.height), cw = w / r, ch = h / r;
   ctx.translate(w, 0); ctx.scale(-1, 1); ctx.drawImage(src, (src.width - cw) / 2, (src.height - ch) / 2, cw, ch, 0, 0, w, h);
+}
+// 컷마다 [촬영하기] 버튼을 누를 때까지 기다림 (포즈 잡을 시간 충분히)
+function waitShotButton(i) {
+  $('shotBtn').textContent = i === 0 ? '📸 1컷 촬영 · 상반신' : '📸 2컷 촬영 · 전신';
+  $('shotTip').textContent = i === 0 ? '허리 위가 다 나오게 서서, 포즈가 준비되면 눌러 주세요' : '머리부터 발끝까지 선 안에 들어오면 눌러 주세요';
+  $('shotOv').classList.remove('hidden'); requestAnimationFrame(fitCam);
+  if (window.__autoShoot) setTimeout(() => $('shotBtn').click(), 300);
+  return new Promise(res => { $('shotBtn').onclick = () => { $('shotOv').classList.add('hidden'); requestAnimationFrame(fitCam); res(); }; });
 }
 async function toast(t, ms) { $('toastTxt').textContent = t; $('toastOv').classList.remove('hidden'); await sleep(ms); $('toastOv').classList.add('hidden'); }
 
