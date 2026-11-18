@@ -31,7 +31,9 @@ button{font-family:'Jua',sans-serif;border:0;cursor:pointer}
 .guide .ln span{position:absolute;right:0;top:8px;color:#fff;font-family:'Jua';font-size:26px;text-shadow:0 2px 6px rgba(0,0,0,.7)}
 .guide .ln.feet span{top:-42px}
 .thumbs div{background-size:contain!important;background-repeat:no-repeat;background-color:#2b2320!important}
-.cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+.cam video{width:100%;height:100%;object-fit:cover;display:block}
+.cam video.mirror{transform:scaleX(-1)}
+.camsw{white-space:nowrap;font-family:'Jua';font-size:19px;background:#fff;border:2px solid var(--line);border-radius:99px;padding:8px 18px;color:var(--ink);cursor:pointer}
 .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff}
 .count{font-family:'Jua';font-size:min(34vh,260px);line-height:1;text-shadow:0 6px 30px rgba(0,0,0,.45)}
 .shot-label{position:absolute;top:18px;left:18px;background:rgba(0,0,0,.45);color:#fff;font-family:'Jua';font-size:28px;padding:6px 18px;border-radius:99px}
@@ -106,7 +108,7 @@ button{font-family:'Jua',sans-serif;border:0;cursor:pointer}
 <div id="booth" class="hidden">
   <div class="stage">
     <div class="cam" id="cam">
-      <video id="live" autoplay playsinline muted></video>
+      <video id="live" class="mirror" autoplay playsinline muted></video>
       <div class="flash" id="flash"></div>
       <div class="shot-label hidden" id="shotLabel">1 / 2</div>
       <div class="guide hidden" id="guide"><div class="ln" style="top:10%"><span>머리는 이 선 아래</span></div><div class="ln feet" style="top:93%"><span>발은 이 선 위</span></div></div>
@@ -127,7 +129,7 @@ button{font-family:'Jua',sans-serif;border:0;cursor:pointer}
       <h2 style="font-family:'Nanum Myeongjo',serif;font-weight:700;font-size:18px;color:#8A6A2E">우리들만의 워킹대회</h2>
     </div>
     <div class="thumbs" id="thumbs"><div>1</div><div>2</div></div>
-    <div class="status"><span id="stServer">서버 확인 중…</span><span id="stQueue" class="hidden"></span></div>
+    <div class="status"><button class="camsw" id="camSwitch">🔄 후면 카메라로</button><span id="stServer">서버 확인 중…</span><span id="stQueue" class="hidden"></span></div>
   </div>
 </div>
 
@@ -423,12 +425,30 @@ function fitCam() {
   if (r > 1.05) { if (!tip) { $('stServer').insertAdjacentHTML('beforebegin', '<span id="stTurn" class="bad">태블릿을 세로로 세우면 전신이 잘 나와요</span>'); } }
   else if (tip) tip.remove();
 }
+// 전면(user) / 후면(environment) 카메라 — 마지막 선택을 기억
+let facing = (() => { try { return localStorage.getItem('boothFacing') || 'user'; } catch (e) { return 'user'; } })();
+let camHooked = false;
+function switchCamera() {
+  if (busy) return;
+  facing = facing === 'user' ? 'environment' : 'user';
+  try { localStorage.setItem('boothFacing', facing); } catch (e) {}
+  initCamera();
+}
 async function initCamera() {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-    $('live').srcObject = stream;
-    const v = $('live'); v.addEventListener('loadedmetadata', fitCam); v.addEventListener('resize', fitCam);
-    window.addEventListener('resize', fitCam); screen.orientation && screen.orientation.addEventListener('change', () => setTimeout(fitCam, 300));
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    const want = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { ...want, facingMode: { exact: facing } }, audio: false }); }
+    catch (e) { stream = await navigator.mediaDevices.getUserMedia({ video: { ...want, facingMode: facing }, audio: false }); }
+    const v = $('live'); v.srcObject = stream;
+    v.classList.toggle('mirror', facing === 'user');   // 전면만 거울처럼 보여줌
+    $('camSwitch').textContent = facing === 'user' ? '🔄 후면 카메라로' : '🔄 전면 카메라로';
+    $('camSwitch').onclick = switchCamera;
+    if (!camHooked) {
+      camHooked = true;
+      v.addEventListener('loadedmetadata', fitCam); v.addEventListener('resize', fitCam);
+      window.addEventListener('resize', fitCam); screen.orientation && screen.orientation.addEventListener('change', () => setTimeout(fitCam, 300));
+    }
   } catch (e) {
     $('camErrTxt').innerHTML = '카메라를 열 수 없어요.<br>주소창 왼쪽 자물쇠 → 권한 → 카메라 <b>허용</b> 후 새로고침해 주세요.<br><small>(' + e.name + ')</small>';
     $('camErr').classList.remove('hidden'); $('startOv').classList.add('hidden');
@@ -466,7 +486,7 @@ async function runSession() {
     // 찰칵
     const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
     if (window.__testFrames) { const t = window.__testFrames[i]; c.width = t.width; c.height = t.height; c.getContext('2d').drawImage(t, 0, 0); }
-    else c.getContext('2d').drawImage(v, 0, 0);
+    else { const cx = c.getContext('2d'); if (facing !== 'user') { cx.translate(c.width, 0); cx.scale(-1, 1); } cx.drawImage(v, 0, 0); }
     shots.push(c); cutJobs.push(cutout(c));
     $('flash').classList.remove('go'); void $('flash').offsetWidth; $('flash').classList.add('go');
     clips.push(await rec);
