@@ -25,8 +25,12 @@ button{font-family:'Jua',sans-serif;border:0;cursor:pointer}
 @media (orientation:portrait){#booth{grid-template-columns:1fr;grid-template-rows:1fr auto}}
 .stage{position:relative;display:flex;align-items:center;justify-content:center;min-height:0}
 .stage{min-width:0}
-.cam{position:relative;aspect-ratio:16/9;width:min(100%, calc((100vh - 40px) * 16 / 9));border-radius:24px;overflow:hidden;background:#2b2320;box-shadow:0 10px 30px rgba(120,70,40,.18)}
-@media (orientation:portrait){.cam{width:min(100%, calc((100vh - 300px) * 16 / 9))}}
+.cam{position:relative;width:100%;height:100%;border-radius:24px;overflow:hidden;background:#2b2320;box-shadow:0 10px 30px rgba(120,70,40,.18)}
+.guide{position:absolute;inset:0;pointer-events:none;z-index:2}
+.guide .ln{position:absolute;left:6%;right:6%;border-top:4px dashed rgba(255,255,255,.9);filter:drop-shadow(0 1px 3px rgba(0,0,0,.6))}
+.guide .ln span{position:absolute;right:0;top:-40px;color:#fff;font-family:'Jua';font-size:26px;text-shadow:0 2px 6px rgba(0,0,0,.7)}
+.guide .ln.feet span{top:6px}
+.thumbs div{background-size:contain!important;background-repeat:no-repeat;background-color:#2b2320!important}
 .cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
 .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff}
 .count{font-family:'Jua';font-size:min(34vh,260px);line-height:1;text-shadow:0 6px 30px rgba(0,0,0,.45)}
@@ -100,7 +104,8 @@ button{font-family:'Jua',sans-serif;border:0;cursor:pointer}
     <div class="cam" id="cam">
       <video id="live" autoplay playsinline muted></video>
       <div class="flash" id="flash"></div>
-      <div class="shot-label hidden" id="shotLabel">1 / 4</div>
+      <div class="shot-label hidden" id="shotLabel">1 / 2</div>
+      <div class="guide hidden" id="guide"><div class="ln" style="top:7%"><span>머리는 이 선 아래</span></div><div class="ln feet" style="top:93%"><span>발은 이 선 위</span></div></div>
       <div class="overlay hidden" id="countOv"><div class="count" id="countNum">5</div></div>
       <div class="overlay hidden" id="toastOv"><div class="toast" id="toastTxt">다음 포즈!</div></div>
       <div class="overlay" id="startOv">
@@ -403,10 +408,22 @@ async function startBooth() {
   else if (!VMIME.startsWith('video/mp4')) $('stServer').insertAdjacentHTML('afterend', '<span class="bad">영상 webm(아이폰 재생 불가) — 크롬 업데이트 필요</span>');
 }
 
+// 카메라 미리보기를 실제 카메라 비율(태블릿을 세우면 세로)에 맞춤
+function fitCam() {
+  const v = $('live'), cam = $('cam'), st = cam.parentElement.getBoundingClientRect();
+  if (!v.videoWidth || !st.width || !st.height) return;
+  const r = v.videoWidth / v.videoHeight, w = Math.min(st.width, st.height * r);
+  cam.style.width = w + 'px'; cam.style.height = (w / r) + 'px';
+  let tip = $('stTurn');
+  if (r > 1.05) { if (!tip) { $('stServer').insertAdjacentHTML('beforebegin', '<span id="stTurn" class="bad">태블릿을 세로로 세우면 전신이 잘 나와요</span>'); } }
+  else if (tip) tip.remove();
+}
 async function initCamera() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
     $('live').srcObject = stream;
+    const v = $('live'); v.addEventListener('loadedmetadata', fitCam); v.addEventListener('resize', fitCam);
+    window.addEventListener('resize', fitCam); screen.orientation && screen.orientation.addEventListener('change', () => setTimeout(fitCam, 300));
   } catch (e) {
     $('camErrTxt').innerHTML = '카메라를 열 수 없어요.<br>주소창 왼쪽 자물쇠 → 권한 → 카메라 <b>허용</b> 후 새로고침해 주세요.<br><small>(' + e.name + ')</small>';
     $('camErr').classList.remove('hidden'); $('startOv').classList.add('hidden');
@@ -436,6 +453,7 @@ async function runSession() {
   for (let i = 0; i < SHOTS; i++) {
     $('shotLabel').textContent = (i + 1) + ' / ' + SHOTS + (i === 0 ? '  ·  상반신이 크게 나오게' : '  ·  머리부터 발끝까지 다 나오게'); $('shotLabel').classList.remove('hidden');
     const rec = startClip();
+    $('guide').classList.toggle('hidden', i !== 1);
     $('countOv').classList.remove('hidden');
     for (let c = COUNTDOWN; c > 0; c--) { $('countNum').textContent = c; await sleep(1000); }
     $('countOv').classList.add('hidden');
@@ -447,9 +465,9 @@ async function runSession() {
     $('flash').classList.remove('go'); void $('flash').offsetWidth; $('flash').classList.add('go');
     clips.push(await rec);
     const t = $('thumbs').children[i]; t.className = 'on'; t.style.backgroundImage = 'url(' + thumbOf(c) + ')';
-    if (i < SHOTS - 1) await toast('좋아요! 이번엔 뒤로 물러나 전신으로!', 2200);
+    if (i < SHOTS - 1) await toast('좋아요! 이번엔 두세 걸음 뒤로! 머리부터 발끝까지', 2600);
   }
-  $('shotLabel').classList.add('hidden');
+  $('shotLabel').classList.add('hidden'); $('guide').classList.add('hidden');
   // 사진 합성
   $('toastTxt').textContent = '잡지 표지 만드는 중…'; $('toastOv').classList.remove('hidden');
   const cuts = await Promise.all(cutJobs);
